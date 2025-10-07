@@ -16,16 +16,6 @@ app.use(cors({
   allowedHeaders: ["Content-Type"]
 }));
 
-// Health/home page
-app.get("/", (req, res) => {
-  res.send("Teen Support API is running. Try POST /start, /age-check, or /chat.");
-});
-
-// Convenience GET for quick browser test
-app.get("/start", (req, res) => {
-  res.json({ message: "Hi! Before we start, what’s your birth year? (YYYY)" });
-});
-
 // --- Database connection (optional for now) ---
 const pool = new pg.Pool({
   connectionString: process.env.PG_DSN || ""
