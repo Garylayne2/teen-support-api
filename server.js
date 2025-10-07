@@ -1,4 +1,4 @@
-// server.js — Teen Support Chatbot Server
+// server.js — Teen Support Chatbot API
 import express from "express";
 import cors from "cors";
 import { z } from "zod";
@@ -9,31 +9,29 @@ dotenv.config();
 const app = express();
 app.use(express.json());
 
-// --- CORS: Allow your WordPress site ---
+// --- Allow your WordPress domain ---
 app.use(cors({
-  origin: ["https://functionalchristianity.com"],  // <-- change this
-  methods: ["POST"],
+  origin: ["https://functionalchristianity.com"], // <-- change to your actual site
+  methods: ["POST", "GET"],
   allowedHeaders: ["Content-Type"]
 }));
 
-// --- Database connection (optional for now) ---
+// --- Database (optional) ---
 const pool = new pg.Pool({
   connectionString: process.env.PG_DSN || ""
 });
 
-// Temporary “embedding” placeholder
+// Temporary embedding placeholder (replace later)
 async function embedText(text) {
-  // In the future, this will call an embedding model
-  return Array.from({length:1536}, () => Math.random());
+  return Array.from({ length: 1536 }, () => Math.random());
 }
 
+// Retrieve from DB (RAG)
 async function retrievePassages(query) {
   const qvec = await embedText(query);
-  // If no database yet, just return empty array
-  if (!pool) return [];
   try {
     const { rows } = await pool.query(
-      'SELECT source_title AS title, text FROM kb_chunks ORDER BY embedding <=> $1 LIMIT 5',
+      "SELECT source_title AS title, text FROM kb_chunks ORDER BY embedding <=> $1 LIMIT 5",
       [qvec]
     );
     return rows || [];
@@ -42,9 +40,11 @@ async function retrievePassages(query) {
   }
 }
 
-// --- Age Gate & Crisis Detection ---
+// --- Age and Safety Helpers ---
 const currentYear = new Date().getUTCFullYear();
-const birthYearSchema = z.object({ birthYear: z.number().int().gte(currentYear-120).lte(currentYear) });
+const birthYearSchema = z.object({
+  birthYear: z.number().int().gte(currentYear - 120).lte(currentYear)
+});
 
 function isTeen(by) {
   const age = currentYear - by;
@@ -52,11 +52,35 @@ function isTeen(by) {
 }
 
 function crisisDetected(text) {
-  const redFlags = ["kill myself","suicide","end my life","hurt myself","can't stay safe","i want to die","self-harm"];
+  const redFlags = [
+    "kill myself", "suicide", "end my life",
+    "hurt myself", "can't stay safe",
+    "i want to die", "self-harm"
+  ];
   return redFlags.some(p => text.toLowerCase().includes(p));
 }
 
 // --- Routes ---
+
+// 👋 Root page (fixes “Cannot GET /”)
+app.get("/", (req, res) => {
+  res.send(`
+    <h2>Teen Support Chatbot API</h2>
+    <p>✅ The server is running!</p>
+    <p>Try these endpoints:</p>
+    <ul>
+      <li><code>POST /start</code></li>
+      <li><code>POST /age-check</code></li>
+      <li><code>POST /chat</code></li>
+    </ul>
+  `);
+});
+
+// Optional GET for quick browser test
+app.get("/start", (req, res) => {
+  res.json({ message: "Hi! Before we start, what’s your birth year? (YYYY)" });
+});
+
 app.post("/start", (req, res) => {
   res.json({ message: "Hi! Before we start, what’s your birth year? (YYYY)" });
 });
