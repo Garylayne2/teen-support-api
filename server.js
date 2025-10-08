@@ -1,6 +1,7 @@
 <<<<<<< HEAD
 // ESM imports
 import 'dotenv/config';
+const clientKey = process.env.OPENAI_API_KEY; // ← use env var only
 import express from 'express';
 import cors from 'cors';
 import OpenAI from 'openai';
