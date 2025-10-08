@@ -9,6 +9,7 @@ import OpenAI from "openai";
 dotenv.config();
 
 const app = express();
+app.set("trust proxy", 1); // ✅ Required for Render or any reverse proxy
 
 // --- Core middleware ---
 app.use(express.json({ limit: "1mb" }));
