@@ -1,8 +1,8 @@
-// server.js (CJS)
-require('dotenv/config');
-const express = require('express');
-const cors = require('cors');
-const OpenAI = require('openai');
+// ESM imports
+import 'dotenv/config';
+import express from 'express';
+import cors from 'cors';
+import OpenAI from 'openai';
 
 // Whitelist
 const TRUSTED = new Set([
