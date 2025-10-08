@@ -40,7 +40,7 @@ app.post('/echo', (req,res)=>{
 
 // OpenAI
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-const MODEL = process.env.OPENAI_MODEL || 'gpt-4o';
+const MODEL = process.env.OPENAI_MODEL || 'gpt-3.5-turbo';
 
 app.post('/chat', async (req,res)=>{
   const userMessage = String(req.body?.message||'').trim();
