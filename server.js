@@ -16,18 +16,14 @@ app.use(express.json({ limit: "1mb" }));
 app.use(morgan("tiny"));
 
 // --- CORS (lock to your site domain in production) ---
-const allowedOrigins = [
-  process.env.CORS_ORIGIN || "http://localhost:3000"
-];
+// Allow your site and localhost
 app.use(
   cors({
-    origin: (origin, cb) => {
-      if (!origin) return cb(null, true); // allow server-to-server / curl
-      return allowedOrigins.includes(origin)
-        ? cb(null, true)
-        : cb(new Error("Not allowed by CORS"));
-    },
-    credentials: false
+    origin: [
+      "https://www.functionalchristianity.com",   // ✅ Replace with your actual WordPress site
+      "https://functionalchristianity.com",
+      "http://localhost:3000"
+    ],
   })
 );
 
