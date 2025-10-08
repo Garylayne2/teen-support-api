@@ -65,6 +65,41 @@ app.post('/chat', async (req,res)=>{
     res.status(500).json(safe);
   }
 });
+// 1) OPTIONS handler: fixes CORS preflight for /chat
+app.options('/chat', (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  return res.sendStatus(204);
+});
+
+// 2) Echo (no OpenAI required): proves front-end → server works
+app.post('/echo', (req, res) => {
+  const text = String(req.body?.message || '').trim();
+  if (!text) return res.status(400).json({ error: 'Missing "message" in body.' });
+  return res.json({ content: `ECHO: ${text}` });
+});
+
+// 3) OpenAI ping: proves key+model are valid in Render
+app.get('/check-key', async (_req, res) => {
+  try {
+    const completion = await client.chat.completions.create({
+      model: process.env.OPENAI_MODEL || 'gpt-4o',
+      messages: [{ role: 'user', content: 'ping' }],
+      temperature: 0
+    });
+    const ok = Boolean(completion?.choices?.[0]?.message?.content);
+    return res.json({ ok, model: process.env.OPENAI_MODEL || 'gpt-4o' });
+  } catch (err) {
+    console.error('CHECK-KEY ERROR:', err?.status, err?.message, err?.response?.data);
+    return res.status(500).json({
+      ok: false,
+      error: err?.message || 'OpenAI call failed',
+      status: err?.status || 500,
+      data: err?.response?.data || null
+    });
+  }
+});
 
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, ()=>console.log(`GARY API listening on http://localhost:${PORT}`));
