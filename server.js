@@ -1,128 +1,92 @@
-// server.js — Teen Support Chatbot API
-import express from "express";
-import cors from "cors";
-import { z } from "zod";
-import dotenv from "dotenv";
-import pg from "pg";
-dotenv.config();
+// server.js (CJS)
+require('dotenv/config');
+const express = require('express');
+const cors = require('cors');
+const OpenAI = require('openai');
+
+// Whitelist
+const TRUSTED = new Set([
+  'focusonthefamily.com',
+  'gotquestions.org',
+  'psychologytoday.com',
+  'biblegateway.com'
+]);
+function isTrusted(urlString) {
+  try {
+    const { hostname } = new URL(urlString);
+    return [...TRUSTED].some(d => hostname === d || hostname.endsWith(`.${d}`));
+  } catch { return false; }
+}
+function sanitizeCitations(text) {
+  const urlRegex = /\bhttps?:\/\/[^\s)]+/gi;
+  return text.replace(urlRegex, (u) => (isTrusted(u) ? u : '[unapproved source removed]'));
+}
+
+const systemPrompt = `You are "GARY", a Christian teen-support chatbot. You are an acronym for "God Always Remembers You".
+MISSION
+Turn my idea for a teenager chatbot that helps understand and relieve anxiety with compassion and empathy into an iron-clad work order, then deliver the work only after both of us agree it’s right.
+PROTOCOL
+0) SILENT SCAN — Privately list every fact or constraint you still need.
+When providing factual, biblical, or psychological guidance,
+only use and reference content from the following trusted domains:
+• FocusOnTheFamily.com
+• GotQuestions.org
+• PsychologyToday.com
+• BibleGateway.com
+Do not cite or summarize from other sources.
+Keep all examples, verses, and advice age-appropriate and encouraging.
+1) CLARIFY LOOP — Ask one question at a time until you estimate ≥95% confidence you can ship the correct result.
+   – Cover: purpose, audience, must-include facts, success criteria, length/format, tech stack (if code), edge cases, risk tolerances.
+2) ECHO CHECK — Reply with one crisp sentence stating: deliverable + #1 must-include fact + hardest constraint.
+   End with:  YES to lock / EDITS / BLUEPRINT / RISK.  WAIT.
+3) BLUEPRINT (if asked) — Produce a short plan…
+4) RISK (if asked) — Top three failure scenarios…
+5) BUILD & SELF-TEST — Only after **YES—GO**…
+6) RESET — If I type RESET, restart at Step 0.
+Respond once with: "Ready—what do you need?"`;
 
 const app = express();
 app.use(express.json());
 
-// --- Allow your WordPress domain ---
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || '')
+  .split(',')
+  .map(s => s.trim())
+  .filter(Boolean);
 app.use(cors({
-  origin: ["https://functionalchristianity.com"], // <-- change to your actual site
-  methods: ["POST", "GET"],
-  allowedHeaders: ["Content-Type"]
+  origin: (origin, cb) => {
+    if (!allowedOrigins.length || !origin) return cb(null, true);
+    return cb(null, allowedOrigins.includes(origin));
+  }
 }));
 
-// --- Database (optional) ---
-const pool = new pg.Pool({
-  connectionString: process.env.PG_DSN || ""
-});
+const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// Temporary embedding placeholder (replace later)
-async function embedText(text) {
-  return Array.from({ length: 1536 }, () => Math.random());
-}
+app.get('/', (_req, res) => res.send('GARY chat API is running'));
 
-// Retrieve from DB (RAG)
-async function retrievePassages(query) {
-  const qvec = await embedText(query);
+app.post('/chat', async (req, res) => {
   try {
-    const { rows } = await pool.query(
-      "SELECT source_title AS title, text FROM kb_chunks ORDER BY embedding <=> $1 LIMIT 5",
-      [qvec]
-    );
-    return rows || [];
-  } catch {
-    return [];
-  }
-}
+    const userMessage = String(req.body?.message || '').trim();
+    if (!userMessage) return res.status(400).json({ error: 'Missing "message" in body.' });
 
-// --- Age and Safety Helpers ---
-const currentYear = new Date().getUTCFullYear();
-const birthYearSchema = z.object({
-  birthYear: z.number().int().gte(currentYear - 120).lte(currentYear)
-});
+    const messages = [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userMessage }
+    ];
 
-function isTeen(by) {
-  const age = currentYear - by;
-  return age >= 13 && age <= 19;
-}
-
-function crisisDetected(text) {
-  const redFlags = [
-    "kill myself", "suicide", "end my life",
-    "hurt myself", "can't stay safe",
-    "i want to die", "self-harm"
-  ];
-  return redFlags.some(p => text.toLowerCase().includes(p));
-}
-
-// --- Routes ---
-
-// 👋 Root page (fixes “Cannot GET /”)
-app.get("/", (req, res) => {
-  res.send(`
-    <h2>Teen Support Chatbot API</h2>
-    <p>✅ The server is running!</p>
-    <p>Try these endpoints:</p>
-    <ul>
-      <li><code>POST /start</code></li>
-      <li><code>POST /age-check</code></li>
-      <li><code>POST /chat</code></li>
-    </ul>
-  `);
-});
-
-// Optional GET for quick browser test
-app.get("/start", (req, res) => {
-  res.json({ message: "Hi! Before we start, what’s your birth year? (YYYY)" });
-});
-
-app.post("/start", (req, res) => {
-  res.json({ message: "Hi! Before we start, what’s your birth year? (YYYY)" });
-});
-
-app.post("/age-check", (req, res) => {
-  try {
-    const parsed = birthYearSchema.parse({ birthYear: Number(req.body.birthYear) });
-    if (!isTeen(parsed.birthYear)) {
-      return res.json({
-        eligible: false,
-        message: "This space is for ages 13–19. If you’re in danger or need urgent help, reach out to a trusted adult or local emergency services."
-      });
-    }
-    res.json({
-      eligible: true,
-      message: "Thanks. What’s weighing on you most today—anxiety, friend stuff, or something else?"
+    const completion = await client.chat.completions.create({
+      model: 'gpt-5-thinking',
+      temperature: 0.4,
+      messages
     });
-  } catch {
-    res.json({ eligible: false, message: "Please enter a 4-digit birth year like 2009." });
+
+    const raw = completion.choices?.[0]?.message?.content || '';
+    const content = sanitizeCitations(raw);
+    res.json({ content });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Chat failed.' });
   }
 });
 
-app.post("/chat", async (req, res) => {
-  const { birthYear, text } = req.body || {};
-  if (!isTeen(Number(birthYear))) {
-    return res.json({ message: "This space is for teens ages 13–19." });
-  }
-
-  if (crisisDetected(String(text || ""))) {
-    return res.json({
-      message: "I’m really glad you told me. I can’t share anything that could put you in danger. Your safety matters. If you might act on these feelings, please contact emergency services or the 988 Suicide & Crisis Lifeline (US). You can call or text 988, or use their chat online. If you can, tell a trusted adult nearby. I can stay with you and share coping steps."
-    });
-  }
-
-  const passages = await retrievePassages(String(text || ""));
-  const response = passages.length
-    ? `It makes sense this feels heavy. We can try a 30-second grounding, practice a short “no thanks” script, or look at what’s in your control. (Source: ${passages[0].title})`
-    : `It makes sense this feels heavy. We can try a 30-second grounding, practice a short “no thanks” script, or look at what’s in your control. I don’t have that in the approved materials yet—feel free to upload a resource you trust.`;
-
-  res.json({ message: response, citations: passages.map(p => p.title) });
-});
-
-// --- Start Server ---
-const port = process.env.PORT || 3000;
-app.listen(port, () => console.log(`Teen bot running on port ${port}`));
+const PORT = process.env.PORT || 8080;
+app.listen(PORT, () => console.log(`GARY API listening on http://localhost:${PORT}`));
